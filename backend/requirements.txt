@@ -1,6 +1,7 @@
 langchain
 langgraph
 langchain-community
+langchain-fireworks
 fastapi
 uvicorn
 python-dotenv
