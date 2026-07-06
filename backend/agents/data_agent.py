@@ -16,7 +16,7 @@ NASA_FIRMS_API_KEY = os.getenv("NASA_FIRMS_API_KEY")
 
 USGS_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
-FIRMS_URL_TEMPLATE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_SNPP_NRT/world/1"
+FIRMS_URL_TEMPLATE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{api_key}/VIIRS_SNPP_NRT/-180,-90,180,90/1"
 
 DEFAULT_WEATHER_LOCATION = "New York"
 

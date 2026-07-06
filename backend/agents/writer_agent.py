@@ -4,13 +4,13 @@ import os
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_fireworks import ChatFireworks
+from langchain_groq import ChatGroq
 
 from graph.state import StormSenseState
 
 load_dotenv()
 
-FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Used when the LLM call fails, so the pipeline still returns something useful
 FALLBACK_EXPLANATION = (
@@ -45,17 +45,17 @@ Instructions:
 
 
 def writer_agent(state: StormSenseState) -> StormSenseState:
-    """Use a Fireworks-hosted LLM to turn the risk analysis into a plain-language explanation."""
+    """Use a Groq-hosted LLM to turn the risk analysis into a plain-language explanation."""
     print("[Writer Agent] Generating plain-language explanation...")
 
     try:
-        if not FIREWORKS_API_KEY:
-            raise ValueError("FIREWORKS_API_KEY is not set in the environment.")
+        if not GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY is not set in the environment.")
 
-        # Initialize the Fireworks AI chat model via LangChain
-        llm = ChatFireworks(
-            model="accounts/fireworks/models/llama-v3p1-8b-instruct",
-            fireworks_api_key=FIREWORKS_API_KEY,
+        # Initialize the Groq chat model via LangChain
+        llm = ChatGroq(
+            api_key=GROQ_API_KEY,
+            model="llama-3.1-8b-instant",
             temperature=0.3,
             max_tokens=500,
         )
