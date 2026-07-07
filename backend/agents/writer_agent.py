@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from graph.state import StormSenseState
+from prompts.writer_prompt import WRITER_PROMPT
 
 load_dotenv()
 
@@ -65,7 +66,7 @@ def writer_agent(state: StormSenseState) -> StormSenseState:
         # Send the prompt to the LLM and get back the plain-language explanation
         response = llm.invoke(
             [
-                SystemMessage(content="You are a helpful disaster safety communicator."),
+                SystemMessage(content=WRITER_PROMPT),
                 HumanMessage(content=prompt),
             ]
         )
