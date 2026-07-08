@@ -208,7 +208,7 @@ export default function StormSenseDashboard() {
               <span className="text-[#94a3b8]">5 AI Agents Active</span>
             </div>
             <div className="px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749] text-xs">
-              AMD GPU Cloud • Fireworks AI
+              AMD GPU Cloud • Groq AI
             </div>
           </div>
         </div>
@@ -404,7 +404,7 @@ export default function StormSenseDashboard() {
                   Send
                 </button>
               </div>
-              <div className="text-[10px] text-center text-[#64748b] mt-2">Powered by LangGraph + Fireworks AI</div>
+              <div className="text-[10px] text-center text-[#64748b] mt-2">Powered by LangGraph + Groq AI</div>
             </div>
           </div>
         </div>
