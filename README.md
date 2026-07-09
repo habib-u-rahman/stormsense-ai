@@ -83,4 +83,4 @@ The API will be available at `http://localhost:8000`.
 
 ## Status
 
-🚧 Hackathon project — under active development.
+
