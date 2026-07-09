@@ -34,7 +34,20 @@ export async function analyze(query: string, location: string = ""): Promise<Ana
   });
 
   if (!response.ok) {
-    throw new Error(`Backend request failed with status ${response.status}`);
+    // FastAPI's HTTPException body is {"detail": "..."} — surface that
+    // instead of a bare status code so failures are actually diagnosable.
+    let detail: string | null = null;
+    try {
+      const body = await response.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // Not JSON — this happens when the Next.js proxy itself can't reach
+      // the backend at all (it was never running, or it crashed), rather
+      // than the backend returning a real error. Say so explicitly.
+    }
+    throw new Error(
+      detail ?? "Cannot reach the backend. Make sure it's running: cd backend && uvicorn main:app --port 8000"
+    );
   }
 
   return response.json();

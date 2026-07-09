@@ -1,6 +1,7 @@
 "use client";
 
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { useEffect } from "react";
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { DisasterEvent } from "../lib/api";
 
@@ -18,6 +19,29 @@ const RISK_LABELS: Record<string, string> = {
   Critical: "Critical risk",
 };
 
+// React/flexbox layouts can settle their final size *after* Leaflet has
+// already measured its container, which leaves the map's internal size
+// cache stale — this makes dragging feel broken/limited (it thinks the
+// container is smaller than it really is). Watching the container with a
+// ResizeObserver and calling invalidateSize() keeps it in sync.
+function MapResizeHandler() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    map.invalidateSize();
+
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [map]);
+
+  return null;
+}
+
 interface DisasterMapProps {
   events: DisasterEvent[];
   onSelect: (event: DisasterEvent) => void;
@@ -34,9 +58,12 @@ export default function DisasterMap({ events, onSelect }: DisasterMapProps) {
       zoomDelta={0.75}
       wheelPxPerZoomLevel={100}
       scrollWheelZoom={true}
+      dragging={true}
+      inertia={true}
       worldCopyJump={true}
       style={{ height: "100%", width: "100%", background: "#0b1220" }}
     >
+      <MapResizeHandler />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"

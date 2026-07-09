@@ -20,6 +20,32 @@ FALLBACK_EXPLANATION = (
 )
 
 
+def _describe_current_weather(raw_weather_data: dict | None) -> str | None:
+    """Pull a plain-language weather snapshot out of the raw OpenWeatherMap response, if available."""
+    if not raw_weather_data:
+        return None
+
+    weather_list = raw_weather_data.get("weather") or []
+    condition = weather_list[0].get("description") if weather_list else None
+    main = raw_weather_data.get("main") or {}
+    temp = main.get("temp")
+    humidity = main.get("humidity")
+    wind = (raw_weather_data.get("wind") or {}).get("speed")
+    city = raw_weather_data.get("name")
+
+    if condition is None and temp is None:
+        return None
+
+    parts = [f"Weather snapshot for {city or 'the requested location'}: {condition or 'conditions unavailable'}"]
+    if temp is not None:
+        parts.append(f"{temp}°C")
+    if humidity is not None:
+        parts.append(f"{humidity}% humidity")
+    if wind is not None:
+        parts.append(f"wind {wind} m/s")
+    return ", ".join(parts) + "."
+
+
 def build_prompt(state: StormSenseState) -> str:
     """Build the natural-language prompt describing the current risk assessment for the LLM."""
     # Only include the alert message in the prompt if an alert was actually triggered
@@ -27,19 +53,38 @@ def build_prompt(state: StormSenseState) -> str:
     if state.get("alert_triggered"):
         alert_section = f"\nActive alert message: {state.get('alert_message')}"
 
-    prompt = f"""You are a disaster safety communicator. Based on the risk assessment below, write a clear summary for a general audience.
+    query = state.get("query") or "What is the current disaster risk?"
+    location = state.get("location")
+    location_line = (
+        f"Location focus: {location} (weather/flood data below is for this location; "
+        f"earthquake/wildfire data is global, not specific to it)"
+        if location
+        else "Location focus: none given — all data below is global. "
+        "If the user asked about a specific place, tell them you don't have location-specific "
+        "data unless they provide a location, and answer with the global data instead."
+    )
 
+    weather_snapshot = _describe_current_weather(state.get("raw_weather_data"))
+    weather_section = f"\n{weather_snapshot}" if weather_snapshot else ""
+
+    prompt = f"""A user asked: "{query}"
+
+Answer their question directly using the real-time risk assessment below. Never claim data is specific to a location unless the location focus below actually names that location.
+
+{location_line}
 Overall risk level: {state.get('overall_risk')}
 Earthquake risk: {state.get('earthquake_risk')}
 Flood risk: {state.get('flood_risk')}
 Wildfire risk: {state.get('wildfire_risk')}
-Risk reasoning: {state.get('risk_reasoning')}{alert_section}
+Risk reasoning: {state.get('risk_reasoning')}{weather_section}{alert_section}
 
 Instructions:
+- Answer the user's actual question directly and specifically. If they asked about current weather/temperature/conditions, use the weather snapshot above if provided.
+- If they asked about one hazard (e.g. just earthquakes), focus on that hazard first.
 - Write in simple, plain English with no scientific jargon.
 - Keep it to a maximum of 4 sentences.
-- Start the summary with the overall risk level.
-- Briefly mention each disaster type (earthquake, flood, wildfire).
+- Only bring up hazards they didn't ask about if the overall situation is High or Critical and they should know.
+- Do not wrap your answer in quotation marks.
 - End with a simple, practical recommendation for the user."""
 
     return prompt
@@ -59,6 +104,7 @@ def writer_agent(state: StormSenseState) -> StormSenseState:
             model="llama-3.1-8b-instant",
             temperature=0.3,
             max_tokens=500,
+            timeout=20,
         )
 
         prompt = build_prompt(state)
@@ -70,7 +116,8 @@ def writer_agent(state: StormSenseState) -> StormSenseState:
                 HumanMessage(content=prompt),
             ]
         )
-        final_explanation = response.content.strip()
+        # Groq occasionally wraps the whole answer in quote marks despite being told not to
+        final_explanation = response.content.strip().strip('"').strip("'").strip()
         print("[Writer Agent] LLM explanation generated successfully.")
 
     except Exception as e:

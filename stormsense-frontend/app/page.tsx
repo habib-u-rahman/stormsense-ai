@@ -62,6 +62,7 @@ export default function StormSenseDashboard() {
   const [floodRisk, setFloodRisk] = useState('Low');
   const [wildfireRisk, setWildfireRisk] = useState('Low');
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
@@ -71,6 +72,7 @@ export default function StormSenseDashboard() {
     }
   ]);
   const [chatInput, setChatInput] = useState('');
+  const [chatLocation, setChatLocation] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null);
 
@@ -115,8 +117,10 @@ export default function StormSenseDashboard() {
     const loadDashboard = async () => {
       try {
         await runAnalysis('Global disaster risk overview');
+        setDashboardError(null);
       } catch (err) {
         console.error('Dashboard refresh failed:', err);
+        setDashboardError(err instanceof Error ? err.message : String(err));
       } finally {
         setIsDashboardLoading(false);
       }
@@ -141,11 +145,12 @@ export default function StormSenseDashboard() {
 
     let aiResponse: string;
     try {
-      const result = await runAnalysis(currentInput);
+      const result = await runAnalysis(currentInput, chatLocation.trim());
       aiResponse = result.final_response || result.final_explanation || "No response from the analysis pipeline.";
     } catch (err) {
       console.error("Analyze request failed:", err);
-      aiResponse = "Sorry, I couldn't reach the StormSense backend. Make sure the backend server is running on port 8000.";
+      const detail = err instanceof Error ? err.message : String(err);
+      aiResponse = `Sorry, I couldn't get an answer right now (${detail}). This is usually a temporary issue with one of the live data sources — please try again in a moment.`;
     }
 
     const aiMessage: ChatMessage = {
@@ -221,6 +226,13 @@ export default function StormSenseDashboard() {
           </div>
         </div>
 
+        {dashboardError && (
+          <div className="mb-5 px-4 py-3 rounded-2xl bg-[#7f1d1d]/40 border border-[#ef4444]/40 text-sm text-[#fca5a5] flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            Live data refresh failed: {dashboardError}. Showing the last known data — retrying automatically.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
           {/* MAP */}
@@ -242,6 +254,10 @@ export default function StormSenseDashboard() {
               <div className="map-container flex-1 min-h-[420px] bg-[#111827] relative rounded-2xl overflow-hidden border border-[#2a3749]">
                 <DisasterMap events={events} onSelect={setSelectedEvent} />
 
+                <div className="absolute top-3 left-3 glass px-3 py-1.5 rounded-xl text-[10px] text-[#94a3b8] z-[1000] pointer-events-none">
+                  🖱️ Click + drag to move • Scroll to zoom
+                </div>
+
                 <div className="absolute bottom-4 right-4 glass px-4 py-3 rounded-2xl text-xs z-[1000]">
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#22c55e]" /> Low</div>
@@ -262,17 +278,29 @@ export default function StormSenseDashboard() {
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Earthquake', risk: earthquakeRisk },
-                  { label: 'Wildfire', risk: wildfireRisk },
-                  { label: 'Flood', risk: floodRisk },
-                ].map((cat) => (
-                  <div key={cat.label} className="card rounded-2xl p-4 text-center">
-                    <div className="text-xs text-[#94a3b8] mb-1">{cat.label.toUpperCase()}</div>
-                    <div className={`inline-block px-4 py-1 rounded-xl text-sm font-semibold mt-1 ${getRiskColor(cat.risk)}`}>
-                      {cat.risk}
+                  { label: 'Earthquake', risk: earthquakeRisk, type: 'earthquake', Icon: Activity },
+                  { label: 'Wildfire', risk: wildfireRisk, type: 'wildfire', Icon: Flame },
+                  { label: 'Flood', risk: floodRisk, type: 'flood', Icon: Waves },
+                ].map((cat) => {
+                  const count = events.filter(e => e.type === cat.type).length;
+                  return (
+                    <div key={cat.label} className="card rounded-2xl p-4">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <cat.Icon className="w-3.5 h-3.5 text-[#94a3b8]" />
+                        <div className="text-xs text-[#94a3b8]">{cat.label.toUpperCase()}</div>
+                      </div>
+                      <div className={`inline-block px-3 py-1 rounded-xl text-sm font-semibold ${getRiskColor(cat.risk)}`}>
+                        {cat.risk}
+                      </div>
+                      <div className="text-[10px] text-[#64748b] mt-2 leading-snug">
+                        {RISK_GUIDANCE[cat.risk] || RISK_GUIDANCE.Low}
+                      </div>
+                      <div className="text-[10px] text-[#3b82f6] mt-1.5">
+                        {count} event{count !== 1 ? 's' : ''} tracked
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -368,7 +396,7 @@ export default function StormSenseDashboard() {
                 {chatMessages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] px-4 py-3 rounded-3xl ${msg.role === 'user' ? 'bg-[#3b82f6] text-white rounded-br-none' : 'glass rounded-bl-none'}`}>
-                      <div>{msg.content}</div>
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
                       <div className="text-[10px] opacity-60 mt-1.5 text-right">{msg.timestamp}</div>
                     </div>
                   </div>
@@ -385,13 +413,21 @@ export default function StormSenseDashboard() {
                 )}
               </div>
 
+              <input
+                type="text"
+                value={chatLocation}
+                onChange={(e) => setChatLocation(e.target.value)}
+                placeholder="Location (optional) — e.g. Pakistan, Tokyo, California"
+                className="mb-2 bg-[#111827] border border-[#2a3749] rounded-xl px-4 py-2 text-xs placeholder:text-[#64748b] focus:outline-none focus:border-[#3b82f6]"
+                disabled={isProcessing}
+              />
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={handleKeyPress}
-                  placeholder="What is the earthquake risk in Pakistan right now?"
+                  placeholder="What is the earthquake risk right now?"
                   className="flex-1 bg-[#111827] border border-[#2a3749] rounded-2xl px-5 py-3 text-sm placeholder:text-[#64748b] focus:outline-none focus:border-[#3b82f6]"
                   disabled={isProcessing}
                 />

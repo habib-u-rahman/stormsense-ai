@@ -3,6 +3,7 @@
 import csv
 import io
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 import requests
 from dotenv import load_dotenv
@@ -83,15 +84,48 @@ def fetch_wildfire_data() -> dict:
         return {}
 
 
+def _get_with_deadline(future, source_name: str, deadline_seconds: float) -> dict:
+    """Wait for a fetch future up to a hard wall-clock deadline, falling back to {} past it.
+
+    requests' own `timeout=` only bounds each individual read chunk, not the
+    total request duration — a large response that trickles in slowly (like
+    NASA FIRMS' global CSV) can still take far longer overall. This enforces
+    an actual ceiling on how long any one source can hold up the pipeline.
+    """
+    try:
+        return future.result(timeout=deadline_seconds)
+    except FutureTimeoutError:
+        print(f"[Data Agent] {source_name} exceeded the {deadline_seconds}s deadline, continuing without it.")
+        return {}
+
+
 def data_agent(state: StormSenseState) -> StormSenseState:
     """Fetch live earthquake, weather, and wildfire data and store it in the shared state."""
     print("[Data Agent] Starting data collection...")
 
     location = state.get("location") or DEFAULT_WEATHER_LOCATION
 
-    state["raw_earthquake_data"] = fetch_earthquake_data()
-    state["raw_weather_data"] = fetch_weather_data(location)
-    state["raw_wildfire_data"] = fetch_wildfire_data()
+    # These three API calls are independent, so run them concurrently instead
+    # of sequentially — the slowest one (usually NASA FIRMS) sets the total
+    # time instead of all three stacking up, which is what was pushing total
+    # pipeline latency past the frontend proxy's timeout. Each also gets a
+    # hard wall-clock deadline so one slow source can't block the others.
+    #
+    # Note: this deliberately does NOT use `with ThreadPoolExecutor() as executor:`
+    # — that context manager calls shutdown(wait=True) on exit, which blocks
+    # until every submitted thread finishes even if we already gave up on it
+    # via .result(timeout=...), silently defeating the whole point of the
+    # deadline. shutdown(wait=False) lets us move on and abandon slow threads;
+    # they finish harmlessly in the background and get garbage collected.
+    executor = ThreadPoolExecutor(max_workers=3)
+    earthquake_future = executor.submit(fetch_earthquake_data)
+    weather_future = executor.submit(fetch_weather_data, location)
+    wildfire_future = executor.submit(fetch_wildfire_data)
+
+    state["raw_earthquake_data"] = _get_with_deadline(earthquake_future, "USGS", 12)
+    state["raw_weather_data"] = _get_with_deadline(weather_future, "OpenWeatherMap", 12)
+    state["raw_wildfire_data"] = _get_with_deadline(wildfire_future, "NASA FIRMS", 18)
+    executor.shutdown(wait=False)
 
     print("[Data Agent] Data collection complete.")
     return state
