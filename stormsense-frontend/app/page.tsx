@@ -11,6 +11,7 @@ import {
   TrendingUp 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { analyze } from './lib/api';
 
 interface DisasterEvent {
   id: number;
@@ -121,27 +122,13 @@ export default function StormSenseDashboard() {
   }, [events]);
 
   const processAgentPipeline = async (query: string): Promise<string> => {
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    const lowerQuery = query.toLowerCase();
-
-    if (lowerQuery.includes('earthquake') || lowerQuery.includes('seismic')) {
-      const eq = events.find(e => e.type === 'earthquake');
-      return eq 
-        ? `Latest earthquake data: A magnitude ${eq.magnitude} event was recorded ${eq.location} at ${eq.time}. Risk level: ${eq.risk}. ${eq.description}`
-        : "No significant earthquake activity detected in the last 6 hours.";
+    try {
+      const result = await analyze(query);
+      return result.final_response || result.final_explanation || "No response from the analysis pipeline.";
+    } catch (err) {
+      console.error("Analyze request failed:", err);
+      return "Sorry, I couldn't reach the StormSense backend. Make sure the backend server is running on port 8000.";
     }
-    if (lowerQuery.includes('wildfire') || lowerQuery.includes('fire')) {
-      const fire = events.find(e => e.type === 'wildfire');
-      return fire ? `Active wildfire detected in ${fire.location}. Current risk: ${fire.risk}. ${fire.description}` : "No active high-risk wildfires reported.";
-    }
-    if (lowerQuery.includes('flood')) {
-      const flood = events.find(e => e.type === 'flood');
-      return flood ? `Flood monitoring: ${flood.location} currently at ${flood.risk} risk. ${flood.description}` : "Flood risk remains low.";
-    }
-    if (lowerQuery.includes('risk')) {
-      return `Current global risk assessment: ${globalRisk}. ${events.length} active events being monitored.`;
-    }
-    return `StormSense AI has analyzed live data. There are currently ${events.length} monitored events. Global risk level is ${globalRisk}.`;
   };
 
   const sendMessage = async () => {
