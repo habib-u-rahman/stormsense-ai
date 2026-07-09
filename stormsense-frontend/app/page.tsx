@@ -1,30 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { 
-  AlertTriangle, 
-  MapPin, 
-  Zap, 
-  Shield, 
-  MessageCircle, 
+import React, { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import {
+  AlertTriangle,
+  MapPin,
+  Zap,
+  Shield,
+  MessageCircle,
   Users,
-  TrendingUp 
+  TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { analyze } from './lib/api';
+import { analyze, DisasterEvent } from './lib/api';
 
-interface DisasterEvent {
-  id: number;
-  type: 'earthquake' | 'flood' | 'wildfire';
-  location: string;
-  magnitude?: number;
-  severity?: string;
-  lat: number;
-  lng: number;
-  risk: 'Low' | 'Medium' | 'High' | 'Critical';
-  time: string;
-  description: string;
-}
+// Leaflet needs `window`, so the map must never render on the server.
+const DisasterMap = dynamic(() => import('./components/DisasterMap'), { ssr: false });
 
 interface Alert {
   id: number;
@@ -42,39 +33,17 @@ interface ChatMessage {
   timestamp: string;
 }
 
-const initialEvents: DisasterEvent[] = [
-  {
-    id: 1, type: 'earthquake', location: "120km SE of Islamabad, Pakistan",
-    magnitude: 5.8, lat: 33.2, lng: 73.8, risk: 'Medium', time: '14:32 PKT',
-    description: 'Moderate seismic activity detected. No immediate structural threat reported.'
-  },
-  {
-    id: 2, type: 'wildfire', location: "Northern California, USA",
-    severity: 'High', lat: 40.5, lng: -122.8, risk: 'High', time: '09:15 PDT',
-    description: 'Active wildfire spreading. Evacuation orders issued for nearby communities.'
-  },
-  {
-    id: 3, type: 'flood', location: "Sindh Province, Pakistan",
-    severity: 'Medium', lat: 25.8, lng: 68.5, risk: 'Medium', time: '11:47 PKT',
-    description: 'River levels rising. Moderate flood risk in low-lying areas.'
-  },
-  {
-    id: 4, type: 'earthquake', location: "35km NW of Almaty, Kazakhstan",
-    magnitude: 4.2, lat: 43.4, lng: 76.8, risk: 'Low', time: '16:05 ALMT',
-    description: 'Minor tremor. No damage expected.'
-  }
-];
-
-const initialAlerts: Alert[] = [
-  {
-    id: 1, type: 'Wildfire', location: 'Northern California', risk: 'High',
-    message: 'Active fire spreading rapidly. Evacuation recommended for zones 4-7.', time: '2 min ago'
-  }
-];
+const DASHBOARD_REFRESH_MS = 90000;
 
 export default function StormSenseDashboard() {
-  const [events, setEvents] = useState<DisasterEvent[]>(initialEvents);
-  const [alerts, setAlerts] = useState<Alert[]>(initialAlerts);
+  const [events, setEvents] = useState<DisasterEvent[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [overallRisk, setOverallRisk] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Low');
+  const [earthquakeRisk, setEarthquakeRisk] = useState('Low');
+  const [floodRisk, setFloodRisk] = useState('Low');
+  const [wildfireRisk, setWildfireRisk] = useState('Low');
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 1, role: 'ai',
@@ -85,51 +54,59 @@ export default function StormSenseDashboard() {
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null);
-  const [globalRisk, setGlobalRisk] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.65) {
+  // Runs the real 5-agent pipeline via the backend and applies the result to
+  // every piece of dashboard state (map, risk cards, alerts). Used both for
+  // the periodic global refresh and for user chat queries, so asking about a
+  // specific place also updates the live map/risk view.
+  const runAnalysis = useCallback(async (query: string, location: string = '') => {
+    const result = await analyze(query, location);
+
+    setEvents(result.events);
+    setOverallRisk((result.overall_risk as typeof overallRisk) || 'Low');
+    setEarthquakeRisk(result.earthquake_risk || 'Low');
+    setFloodRisk(result.flood_risk || 'Low');
+    setWildfireRisk(result.wildfire_risk || 'Low');
+
+    if (result.alert_triggered && result.alert_message) {
+      const hazards = [
+        result.earthquake_risk === result.overall_risk ? 'Earthquake' : null,
+        result.flood_risk === result.overall_risk ? 'Flood' : null,
+        result.wildfire_risk === result.overall_risk ? 'Wildfire' : null,
+      ].filter(Boolean).join(' & ');
+
+      setAlerts(prev => {
+        if (prev[0]?.message === result.alert_message) return prev;
         const newAlert: Alert = {
           id: Date.now(),
-          type: ['Earthquake', 'Wildfire', 'Flood'][Math.floor(Math.random() * 3)],
-          location: ['Pakistan', 'California', 'Indonesia', 'Turkey', 'Kazakhstan'][Math.floor(Math.random() * 5)],
-          risk: Math.random() > 0.7 ? 'Critical' : 'High',
-          message: 'New high-risk event detected. Analysis in progress...',
+          type: hazards || 'Multiple Hazards',
+          location: location || 'Global',
+          risk: result.overall_risk,
+          message: result.alert_message,
           time: 'Just now'
         };
-        setAlerts(prev => [newAlert, ...prev].slice(0, 5));
-      }
-      if (Math.random() > 0.8) {
-        setEvents(prev => {
-          const updated = [...prev];
-          const idx = Math.floor(Math.random() * updated.length);
-          const risks: ('Low' | 'Medium' | 'High' | 'Critical')[] = ['Low', 'Medium', 'High', 'Critical'];
-          updated[idx] = { ...updated[idx], risk: risks[Math.floor(Math.random() * risks.length)] };
-          return updated;
-        });
-      }
-    }, 18000);
-    return () => clearInterval(interval);
+        return [newAlert, ...prev].slice(0, 5);
+      });
+    }
+
+    return result;
   }, []);
 
   useEffect(() => {
-    const hasCritical = events.some(e => e.risk === 'Critical');
-    const hasHigh = events.some(e => e.risk === 'High');
-    if (hasCritical) setGlobalRisk('Critical');
-    else if (hasHigh) setGlobalRisk('High');
-    else setGlobalRisk('Medium');
-  }, [events]);
+    const loadDashboard = async () => {
+      try {
+        await runAnalysis('Global disaster risk overview');
+      } catch (err) {
+        console.error('Dashboard refresh failed:', err);
+      } finally {
+        setIsDashboardLoading(false);
+      }
+    };
 
-  const processAgentPipeline = async (query: string): Promise<string> => {
-    try {
-      const result = await analyze(query);
-      return result.final_response || result.final_explanation || "No response from the analysis pipeline.";
-    } catch (err) {
-      console.error("Analyze request failed:", err);
-      return "Sorry, I couldn't reach the StormSense backend. Make sure the backend server is running on port 8000.";
-    }
-  };
+    loadDashboard();
+    const interval = setInterval(loadDashboard, DASHBOARD_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [runAnalysis]);
 
   const sendMessage = async () => {
     if (!chatInput.trim() || isProcessing) return;
@@ -143,7 +120,14 @@ export default function StormSenseDashboard() {
     setChatInput('');
     setIsProcessing(true);
 
-    const aiResponse = await processAgentPipeline(currentInput);
+    let aiResponse: string;
+    try {
+      const result = await runAnalysis(currentInput);
+      aiResponse = result.final_response || result.final_explanation || "No response from the analysis pipeline.";
+    } catch (err) {
+      console.error("Analyze request failed:", err);
+      aiResponse = "Sorry, I couldn't reach the StormSense backend. Make sure the backend server is running on port 8000.";
+    }
 
     const aiMessage: ChatMessage = {
       id: Date.now() + 1, role: 'ai', content: aiResponse,
@@ -208,18 +192,18 @@ export default function StormSenseDashboard() {
             <div className="text-[#94a3b8] mt-1">Autonomous 24/7 surveillance • USGS + NASA FIRMS + OpenWeatherMap</div>
           </div>
           <div className="flex items-center gap-3">
-            <div className={`px-5 py-2 rounded-2xl text-sm font-medium flex items-center gap-2 border ${getRiskColor(globalRisk)}`}>
+            <div className={`px-5 py-2 rounded-2xl text-sm font-medium flex items-center gap-2 border ${getRiskColor(overallRisk)}`}>
               <TrendingUp className="w-4 h-4" />
-              GLOBAL RISK: {globalRisk.toUpperCase()}
+              GLOBAL RISK: {overallRisk.toUpperCase()}
             </div>
             <div className="text-xs text-[#94a3b8] px-3">
-              {events.length} active events • Updated seconds ago
+              {isDashboardLoading ? 'Loading live data…' : `${events.length} active events • Updated seconds ago`}
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          
+
           {/* MAP */}
           <div className="lg:col-span-7">
             <div className="glass rounded-3xl p-6 h-full flex flex-col">
@@ -237,20 +221,9 @@ export default function StormSenseDashboard() {
               </div>
 
               <div className="map-container flex-1 min-h-[420px] bg-[#111827] relative rounded-2xl overflow-hidden border border-[#2a3749]">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="text-6xl mb-4 opacity-20">🗺️</div>
-                    <div className="text-lg font-medium mb-2">Interactive Map</div>
-                    <div className="text-sm text-[#94a3b8]">Color-coded markers • Click for details</div>
-                  </div>
-                </div>
+                <DisasterMap events={events} onSelect={setSelectedEvent} />
 
-                <div className="absolute top-[28%] left-[32%] w-4 h-4 rounded-full bg-[#eab308] ring-4 ring-[#eab308]/30 cursor-pointer" onClick={() => setSelectedEvent(events[0])} />
-                <div className="absolute top-[42%] left-[68%] w-5 h-5 rounded-full bg-[#ef4444] ring-4 ring-[#ef4444]/30 cursor-pointer animate-pulse" onClick={() => setSelectedEvent(events[1])} />
-                <div className="absolute top-[65%] left-[48%] w-3.5 h-3.5 rounded-full bg-[#eab308] ring-4 ring-[#eab308]/30 cursor-pointer" onClick={() => setSelectedEvent(events[2])} />
-                <div className="absolute top-[35%] left-[55%] w-3 h-3 rounded-full bg-[#22c55e] ring-4 ring-[#22c55e]/30 cursor-pointer" onClick={() => setSelectedEvent(events[3])} />
-
-                <div className="absolute bottom-4 right-4 glass px-4 py-3 rounded-2xl text-xs">
+                <div className="absolute bottom-4 right-4 glass px-4 py-3 rounded-2xl text-xs z-[1000]">
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#22c55e]" /> Low</div>
                     <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" /> Medium</div>
@@ -269,24 +242,18 @@ export default function StormSenseDashboard() {
                 <div className="font-semibold">Risk Score Dashboard</div>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                {['Earthquake', 'Wildfire', 'Flood'].map((cat, idx) => {
-                  const relevant = events.filter(e => 
-                    (cat === 'Earthquake' && e.type === 'earthquake') ||
-                    (cat === 'Wildfire' && e.type === 'wildfire') ||
-                    (cat === 'Flood' && e.type === 'flood')
-                  );
-                  const highest = relevant.length > 0 ? relevant.reduce((a, b) => 
-                    ['Critical','High','Medium','Low'].indexOf(a.risk) < ['Critical','High','Medium','Low'].indexOf(b.risk) ? a : b
-                  ).risk : 'Low';
-                  return (
-                    <div key={idx} className="card rounded-2xl p-4 text-center">
-                      <div className="text-xs text-[#94a3b8] mb-1">{cat.toUpperCase()}</div>
-                      <div className={`inline-block px-4 py-1 rounded-xl text-sm font-semibold mt-1 ${getRiskColor(highest)}`}>
-                        {highest}
-                      </div>
+                {[
+                  { label: 'Earthquake', risk: earthquakeRisk },
+                  { label: 'Wildfire', risk: wildfireRisk },
+                  { label: 'Flood', risk: floodRisk },
+                ].map((cat) => (
+                  <div key={cat.label} className="card rounded-2xl p-4 text-center">
+                    <div className="text-xs text-[#94a3b8] mb-1">{cat.label.toUpperCase()}</div>
+                    <div className={`inline-block px-4 py-1 rounded-xl text-sm font-semibold mt-1 ${getRiskColor(cat.risk)}`}>
+                      {cat.risk}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -299,6 +266,9 @@ export default function StormSenseDashboard() {
                 <div className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#7f1d1d] text-[#fca5a5]">LIVE</div>
               </div>
               <div className="flex-1 overflow-auto space-y-2 pr-1">
+                {alerts.length === 0 && (
+                  <div className="text-xs text-[#94a3b8] px-1">No active High/Critical alerts right now.</div>
+                )}
                 <AnimatePresence>
                   {alerts.map((alert) => (
                     <motion.div key={alert.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -334,6 +304,9 @@ export default function StormSenseDashboard() {
                   </div>
                   <div className="text-xl font-semibold tracking-tight">{selectedEvent.location}</div>
                   <div className="text-[#94a3b8] mt-1">{selectedEvent.description}</div>
+                  {selectedEvent.time && (
+                    <div className="text-xs text-[#64748b] mt-2">Detected: {selectedEvent.time}</div>
+                  )}
                   <button onClick={() => setSelectedEvent(null)} className="mt-4 text-xs px-4 py-2 rounded-xl border border-[#2a3749] hover:bg-[#1a2332]">
                     Close
                   </button>

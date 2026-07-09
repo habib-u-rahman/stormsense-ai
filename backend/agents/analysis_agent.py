@@ -5,6 +5,17 @@ from graph.state import StormSenseState
 RISK_ORDER = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
 
 
+def classify_earthquake_magnitude(magnitude: float) -> str:
+    """Map a single earthquake magnitude to a risk level, per StormSense's fixed thresholds."""
+    if magnitude >= 7.0:
+        return "Critical"
+    elif magnitude >= 6.0:
+        return "High"
+    elif magnitude >= 5.0:
+        return "Medium"
+    return "Low"
+
+
 def analyze_earthquake_risk(raw_earthquake_data: dict) -> tuple[str, float]:
     """Determine earthquake risk from the highest magnitude in the USGS feature list."""
     features = (raw_earthquake_data or {}).get("features", [])
@@ -23,17 +34,7 @@ def analyze_earthquake_risk(raw_earthquake_data: dict) -> tuple[str, float]:
         return "Low", 0.0
 
     max_magnitude = max(magnitudes)
-
-    if max_magnitude >= 7.0:
-        risk = "Critical"
-    elif max_magnitude >= 6.0:
-        risk = "High"
-    elif max_magnitude >= 5.0:
-        risk = "Medium"
-    else:
-        risk = "Low"
-
-    return risk, max_magnitude
+    return classify_earthquake_magnitude(max_magnitude), max_magnitude
 
 
 def analyze_flood_risk(raw_weather_data: dict) -> tuple[str, int | None]:

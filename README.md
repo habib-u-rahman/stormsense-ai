@@ -6,9 +6,10 @@ StormSense AI is a real-time natural disaster intelligence platform powered by a
 
 - **Backend:** Python, FastAPI, Uvicorn
 - **AI Orchestration:** LangChain, LangGraph (multi-agent workflow)
+- **LLM:** Groq (`llama-3.1-8b-instant`)
 - **Data Sources:** USGS (earthquakes), OpenWeather (weather/storms), NASA FIRMS (wildfires)
 - **Config:** python-dotenv, Pydantic
-- **Frontend:** TBD
+- **Frontend:** Next.js (App Router, TypeScript), Tailwind CSS, react-leaflet, framer-motion
 
 ## Multi-Agent Architecture
 
@@ -25,15 +26,19 @@ The system is powered by a graph of specialized agents:
 ```
 stormsense-ai/
 ├── backend/
-│   ├── agents/       # Individual agent implementations
-│   ├── api/          # FastAPI routes
-│   ├── graph/         # LangGraph state and workflow definitions
-│   ├── prompts/       # Prompt templates for each agent
-│   ├── tools/         # External API integrations (USGS, weather, FIRMS)
-│   ├── main.py        # FastAPI application entry point
+│   ├── agents/             # Individual agent implementations
+│   ├── api/                # FastAPI routes
+│   ├── graph/               # LangGraph state and workflow definitions
+│   ├── prompts/              # Prompt templates for each agent
+│   ├── tools/                 # Raw-API-response parsers (USGS, weather, FIRMS)
+│   ├── main.py                 # FastAPI application entry point
 │   ├── requirements.txt
 │   └── .env.example
-├── frontend/          # Frontend application (coming soon)
+├── stormsense-frontend/       # Next.js dashboard (map, chat, live risk cards)
+│   └── app/
+│       ├── lib/api.ts          # Backend API client
+│       ├── components/          # DisasterMap (Leaflet)
+│       └── page.tsx              # Main dashboard
 ├── .gitignore
 └── README.md
 ```
@@ -43,9 +48,10 @@ stormsense-ai/
 ### Prerequisites
 
 - Python 3.10+
-- API keys for OpenAI/Fireworks, OpenWeather, and NASA FIRMS
+- Node.js 18+
+- API keys for Groq, OpenWeather, and NASA FIRMS
 
-### Setup
+### Backend
 
 1. Clone the repository:
    ```bash
@@ -71,7 +77,17 @@ stormsense-ai/
    uvicorn main:app --reload
    ```
 
-The API will be available at `http://localhost:8000`.
+The API will be available at `http://localhost:8000` (interactive docs at `/docs`).
+
+### Frontend
+
+```bash
+cd stormsense-frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The dashboard talks to the backend through a Next.js rewrite proxy (`next.config.ts`), so the backend must be running on port 8000 for the map, risk cards, alerts, and chat to show live data.
 
 ## Data Sources
 
@@ -83,4 +99,4 @@ The API will be available at `http://localhost:8000`.
 
 ## Status
 
-
+Backend pipeline and frontend dashboard are both live and connected end-to-end: the map, risk score cards, real-time alerts, and chat all run on real data from the 5-agent pipeline. 🚧 Hackathon project — under active development.
