@@ -48,7 +48,7 @@ export default function StormSenseDashboard() {
     {
       id: 1, role: 'ai',
       content: "StormSense AI online. Monitoring live data from USGS, NASA FIRMS & OpenWeatherMap. How can I help you today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [chatInput, setChatInput] = useState('');
@@ -113,7 +113,7 @@ export default function StormSenseDashboard() {
 
     const userMessage: ChatMessage = {
       id: Date.now(), role: 'user', content: chatInput.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     };
     setChatMessages(prev => [...prev, userMessage]);
     const currentInput = chatInput.trim();
@@ -131,7 +131,7 @@ export default function StormSenseDashboard() {
 
     const aiMessage: ChatMessage = {
       id: Date.now() + 1, role: 'ai', content: aiResponse,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     };
     setChatMessages(prev => [...prev, aiMessage]);
     setIsProcessing(false);
@@ -170,7 +170,7 @@ export default function StormSenseDashboard() {
             </div>
             <div className="ml-6 px-3 py-1 rounded-full bg-[#1a2332] text-xs flex items-center gap-2 border border-[#2a3749]">
               <div className="w-2 h-2 rounded-full bg-[#22c55e] status-dot" />
-              <span className="text-[#94a3b8]">LIVE • {new Date().toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+              <span className="text-[#94a3b8]">LIVE • {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm">
