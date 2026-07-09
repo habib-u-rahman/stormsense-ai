@@ -9,13 +9,32 @@ import {
   Shield,
   MessageCircle,
   Users,
-  TrendingUp
+  TrendingUp,
+  Activity,
+  Flame,
+  Waves,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyze, DisasterEvent } from './lib/api';
 
 // Leaflet needs `window`, so the map must never render on the server.
 const DisasterMap = dynamic(() => import('./components/DisasterMap'), { ssr: false });
+
+// Icons and plain-language guidance for the AI Analysis Panel, so a
+// non-technical user immediately understands what an event means for them.
+const EVENT_ICONS: Record<string, typeof Activity> = {
+  earthquake: Activity,
+  wildfire: Flame,
+  flood: Waves,
+};
+
+const RISK_GUIDANCE: Record<string, string> = {
+  Low: "No action needed — this is just for your awareness.",
+  Medium: "Stay aware and keep an eye on local updates.",
+  High: "Take precautions and avoid the affected area if you can.",
+  Critical: "Seek safety immediately and follow local emergency guidance.",
+};
 
 interface Alert {
   id: number;
@@ -299,13 +318,30 @@ export default function StormSenseDashboard() {
               </div>
               {selectedEvent ? (
                 <div>
-                  <div className={`inline-block px-4 py-1 rounded-2xl text-sm font-medium mb-3 ${getRiskColor(selectedEvent.risk)}`}>
-                    {selectedEvent.risk} RISK
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${getRiskColor(selectedEvent.risk)}`}>
+                      {(() => {
+                        const Icon = EVENT_ICONS[selectedEvent.type] || Info;
+                        return <Icon className="w-4 h-4" />;
+                      })()}
+                    </div>
+                    <div className={`inline-block px-4 py-1 rounded-2xl text-sm font-medium capitalize ${getRiskColor(selectedEvent.risk)}`}>
+                      {selectedEvent.type} • {selectedEvent.risk} risk
+                    </div>
                   </div>
                   <div className="text-xl font-semibold tracking-tight">{selectedEvent.location}</div>
                   <div className="text-[#94a3b8] mt-1">{selectedEvent.description}</div>
+
+                  <div className="card rounded-2xl p-4 mt-4 flex items-start gap-3">
+                    <Info className="w-4 h-4 text-[#3b82f6] mt-0.5 shrink-0" />
+                    <div>
+                      <div className="text-xs text-[#94a3b8] mb-0.5">What this means for you</div>
+                      <div className="text-sm">{RISK_GUIDANCE[selectedEvent.risk] || RISK_GUIDANCE.Low}</div>
+                    </div>
+                  </div>
+
                   {selectedEvent.time && (
-                    <div className="text-xs text-[#64748b] mt-2">Detected: {selectedEvent.time}</div>
+                    <div className="text-xs text-[#64748b] mt-3">Detected: {selectedEvent.time}</div>
                   )}
                   <button onClick={() => setSelectedEvent(null)} className="mt-4 text-xs px-4 py-2 rounded-xl border border-[#2a3749] hover:bg-[#1a2332]">
                     Close

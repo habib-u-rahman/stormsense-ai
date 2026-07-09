@@ -69,6 +69,19 @@ def _format_time(iso_timestamp: Optional[str]) -> str:
     return iso_timestamp[:16].replace("T", " ")
 
 
+def _describe_wildfire_intensity(frp: Optional[float]) -> str:
+    """Translate fire radiative power (a technical satellite reading) into a plain-language label."""
+    if frp is None:
+        return "unknown"
+    if frp < 10:
+        return "low"
+    if frp < 50:
+        return "moderate"
+    if frp < 200:
+        return "high"
+    return "extreme"
+
+
 def _build_earthquake_events(raw_earthquake_data: Optional[dict]) -> List[DisasterEvent]:
     """Convert raw USGS data into map-ready earthquake events with per-event risk."""
     parsed = parse_earthquake_data(raw_earthquake_data or {})
@@ -81,20 +94,20 @@ def _build_earthquake_events(raw_earthquake_data: Optional[dict]) -> List[Disast
         if lat is None or lng is None or magnitude is None:
             continue
 
+        depth_km = quake.get("depth_km")
+        depth_text = f", about {round(depth_km)} km underground" if depth_km is not None else ""
+
         events.append(
             DisasterEvent(
                 id=f"eq-{quake.get('event_id')}",
                 type="earthquake",
                 location=quake.get("location") or "Unknown location",
-                magnitude=magnitude,
+                magnitude=round(magnitude, 1),
                 lat=lat,
                 lng=lng,
                 risk=classify_earthquake_magnitude(magnitude),
                 time=_format_time(quake.get("time")),
-                description=(
-                    f"Magnitude {magnitude} earthquake detected "
-                    f"at a depth of {quake.get('depth_km')} km."
-                ),
+                description=f"A magnitude {magnitude:.1f} earthquake was detected{depth_text}.",
             )
         )
 
@@ -116,6 +129,7 @@ def _build_wildfire_events(raw_wildfire_data: Optional[dict], wildfire_risk: str
     events: List[DisasterEvent] = []
     for idx, hotspot in enumerate(with_coords[:MAX_WILDFIRE_MARKERS]):
         coords = hotspot["coordinates"]
+        intensity = _describe_wildfire_intensity(hotspot.get("frp"))
         events.append(
             DisasterEvent(
                 id=f"wf-{idx}-{coords['latitude']}-{coords['longitude']}",
@@ -126,10 +140,7 @@ def _build_wildfire_events(raw_wildfire_data: Optional[dict], wildfire_risk: str
                 lng=coords["longitude"],
                 risk=wildfire_risk,
                 time=_format_time(hotspot.get("detected_at")),
-                description=(
-                    f"Active fire hotspot (fire radiative power: {hotspot.get('frp')} MW, "
-                    f"confidence: {hotspot.get('confidence')})."
-                ),
+                description=f"An active wildfire was detected, burning with {intensity} intensity.",
             )
         )
 
@@ -160,7 +171,7 @@ def _build_weather_events(raw_weather_data: Optional[dict]) -> List[DisasterEven
                 lng=lng,
                 risk=item.get("severity") or "Low",
                 time=_format_time(item.get("issued_at")),
-                description=item.get("description") or item.get("event_name") or "Weather event detected.",
+                description=(item.get("description") or item.get("event_name") or "Weather event detected.").capitalize(),
             )
         )
 
