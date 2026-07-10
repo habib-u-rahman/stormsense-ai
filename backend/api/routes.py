@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from agents.analysis_agent import classify_earthquake_magnitude
 from graph.workflow import run_pipeline
+from services.history import get_history
+from services.subscribers import add_subscriber, get_subscriber_count
 from tools.firms_tool import parse_wildfire_data
 from tools.usgs_tool import parse_earthquake_data
 from tools.weather_tool import parse_weather_data
@@ -52,11 +54,36 @@ class AnalyzeResponse(BaseModel):
     alert_message: str
     final_explanation: str
     final_response: str
+    risk_trend: Optional[str] = None
+    notification_sent: bool = False
     events: List[DisasterEvent]
 
 
 class HealthResponse(BaseModel):
     """Response body returned by GET /api/health."""
+
+    status: str
+    message: str
+
+
+class HistoryEntryResponse(BaseModel):
+    """A single point-in-time risk snapshot, for the dashboard's trend chart."""
+
+    timestamp: str
+    overall_risk: str
+    earthquake_risk: str
+    flood_risk: str
+    wildfire_risk: str
+
+
+class SubscribeRequest(BaseModel):
+    """Request body for POST /api/subscribe. No login — just an email to alert."""
+
+    value: str
+
+
+class SubscribeResponse(BaseModel):
+    """Response body returned by POST /api/subscribe."""
 
     status: str
     message: str
@@ -187,25 +214,50 @@ def build_dashboard_events(result: dict) -> List[DisasterEvent]:
     return events
 
 
+def run_analysis_and_shape(query: str, location: str = "", autonomous: bool = False) -> AnalyzeResponse:
+    """Run the full pipeline and shape the result into an AnalyzeResponse.
+
+    Shared by the POST /api/analyze endpoint and the autonomous background
+    monitor (services/scheduler.py), so both produce identically-shaped data.
+    `autonomous` defaults to False here so chat/manual requests never trigger
+    the Notifier Agent's real email — only the scheduler passes True.
+    """
+    result = run_pipeline(query=query, location=location, autonomous=autonomous)
+
+    return AnalyzeResponse(
+        overall_risk=result.get("overall_risk") or "",
+        earthquake_risk=result.get("earthquake_risk") or "",
+        flood_risk=result.get("flood_risk") or "",
+        wildfire_risk=result.get("wildfire_risk") or "",
+        alert_triggered=result.get("alert_triggered") or False,
+        alert_message=result.get("alert_message") or "",
+        final_explanation=result.get("final_explanation") or "",
+        final_response=result.get("final_response") or "",
+        risk_trend=result.get("risk_trend"),
+        notification_sent=result.get("notification_sent") or False,
+        events=build_dashboard_events(result),
+    )
+
+
 @router.post("/api/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest):
     """Run the full multi-agent pipeline for the given query/location and return the risk assessment."""
     try:
-        result = run_pipeline(query=request.query, location=request.location)
-
-        return AnalyzeResponse(
-            overall_risk=result.get("overall_risk") or "",
-            earthquake_risk=result.get("earthquake_risk") or "",
-            flood_risk=result.get("flood_risk") or "",
-            wildfire_risk=result.get("wildfire_risk") or "",
-            alert_triggered=result.get("alert_triggered") or False,
-            alert_message=result.get("alert_message") or "",
-            final_explanation=result.get("final_explanation") or "",
-            final_response=result.get("final_response") or "",
-            events=build_dashboard_events(result),
-        )
+        return run_analysis_and_shape(request.query, request.location)
     except Exception as e:
         # Raise a proper HTTP error instead of letting the pipeline crash the request
+        raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
+
+
+@router.post("/api/trigger-check", response_model=AnalyzeResponse)
+def trigger_check():
+    """Manually run one autonomous-style global check right now, instead of waiting
+    for the next scheduled cycle. Unlike /api/analyze, this DOES run with
+    autonomous=True, so it can send a real email to subscribers if risk is
+    High/Critical — useful for testing the Notifier Agent without waiting."""
+    try:
+        return run_analysis_and_shape("Global disaster risk overview", "", autonomous=True)
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
 
 
@@ -213,3 +265,23 @@ def analyze(request: AnalyzeRequest):
 def health():
     """Simple health check endpoint to confirm the API is running."""
     return HealthResponse(status="ok", message="StormSense AI is running")
+
+
+@router.get("/api/history", response_model=List[HistoryEntryResponse])
+def history():
+    """Return the autonomous monitor's rolling risk history, for the trend chart."""
+    return get_history()
+
+
+@router.post("/api/subscribe", response_model=SubscribeResponse)
+def subscribe(request: SubscribeRequest):
+    """Register an email to receive real disaster alerts. No login required."""
+    try:
+        add_subscriber(request.value)
+        count = get_subscriber_count()
+        return SubscribeResponse(
+            status="ok",
+            message=f"You're subscribed. ({count} subscriber{'s' if count != 1 else ''} total.)",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -48,3 +48,17 @@ class StormSenseState(TypedDict):
 
     # The complete combined response sent back to the user
     final_response: Optional[str]
+
+    # True only for scheduled background runs (the autonomous monitor), never
+    # for user-initiated chat queries — gates real-world side effects like
+    # sending an email so asking a question never spams a notification
+    autonomous: Optional[bool]
+
+    # True if the Notifier Agent actually sent a real email this run
+    notification_sent: Optional[bool]
+
+    # Plain-language description of how risk has changed recently (e.g.
+    # "Wildfire risk has risen from Medium to Critical in the last hour"),
+    # produced by the Forecast Agent from recent history. None if there
+    # isn't enough history yet to compare against.
+    risk_trend: Optional[str]

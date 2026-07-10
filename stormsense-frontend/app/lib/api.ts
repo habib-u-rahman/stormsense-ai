@@ -23,7 +23,16 @@ export interface AnalyzeResponse {
   alert_message: string;
   final_explanation: string;
   final_response: string;
+  risk_trend?: string | null;
   events: DisasterEvent[];
+}
+
+export interface HistoryEntry {
+  timestamp: string;
+  overall_risk: string;
+  earthquake_risk: string;
+  flood_risk: string;
+  wildfire_risk: string;
 }
 
 export async function analyze(query: string, location: string = ""): Promise<AnalyzeResponse> {
@@ -51,4 +60,26 @@ export async function analyze(query: string, location: string = ""): Promise<Ana
   }
 
   return response.json();
+}
+
+export async function getHistory(): Promise<HistoryEntry[]> {
+  const response = await fetch("/api/backend/api/history");
+  if (!response.ok) {
+    throw new Error(`Failed to load risk history (status ${response.status})`);
+  }
+  return response.json();
+}
+
+export async function subscribe(value: string): Promise<string> {
+  const response = await fetch("/api/backend/api/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.detail || `Subscription failed (status ${response.status})`);
+  }
+  return body.message as string;
 }

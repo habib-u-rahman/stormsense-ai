@@ -67,6 +67,9 @@ def build_prompt(state: StormSenseState) -> str:
     weather_snapshot = _describe_current_weather(state.get("raw_weather_data"))
     weather_section = f"\n{weather_snapshot}" if weather_snapshot else ""
 
+    risk_trend = state.get("risk_trend")
+    trend_section = f"\nRecent trend: {risk_trend}" if risk_trend else ""
+
     prompt = f"""A user asked: "{query}"
 
 Answer their question directly using the real-time risk assessment below. Never claim data is specific to a location unless the location focus below actually names that location.
@@ -76,11 +79,12 @@ Overall risk level: {state.get('overall_risk')}
 Earthquake risk: {state.get('earthquake_risk')}
 Flood risk: {state.get('flood_risk')}
 Wildfire risk: {state.get('wildfire_risk')}
-Risk reasoning: {state.get('risk_reasoning')}{weather_section}{alert_section}
+Risk reasoning: {state.get('risk_reasoning')}{weather_section}{trend_section}{alert_section}
 
 Instructions:
 - Answer the user's actual question directly and specifically. If they asked about current weather/temperature/conditions, use the weather snapshot above if provided.
 - If they asked about one hazard (e.g. just earthquakes), focus on that hazard first.
+- If they asked whether risk is rising, falling, or changing, use the recent trend above if provided — otherwise don't bring up trend at all.
 - Write in simple, plain English with no scientific jargon.
 - Keep it to a maximum of 4 sentences.
 - Only bring up hazards they didn't ask about if the overall situation is High or Critical and they should know.
@@ -127,8 +131,12 @@ def writer_agent(state: StormSenseState) -> StormSenseState:
 
     state["final_explanation"] = final_explanation
 
-    # Combine the alert message (when present) with the plain-language explanation
-    if state.get("alert_triggered") and state.get("alert_message"):
+    # Only staple the raw EMERGENCY banner onto autonomous runs (the
+    # dashboard's background monitor) — a chat query already gets alert
+    # context baked into its tailored answer via the prompt, so repeating
+    # the generic banner on every single chat response is just noise that
+    # doesn't reflect what the user actually asked.
+    if state.get("autonomous") and state.get("alert_triggered") and state.get("alert_message"):
         state["final_response"] = f"{state['alert_message']}\n\n{final_explanation}"
     else:
         state["final_response"] = final_explanation

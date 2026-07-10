@@ -11,7 +11,7 @@ Built with love for the team. This is a high-quality, production-looking fronten
 - Interactive visual map with clickable disaster markers
 - Real-time simulated alerts (new ones appear automatically)
 - Risk Score Dashboard with color-coded badges
-- Fully working chat that simulates the **5 AI Agent pipeline**
+- Fully working chat connected to the real **7-agent backend pipeline**
 - Smooth animations + glassmorphism
 - Click markers → see AI Analysis Panel
 - Ready for real backend connection

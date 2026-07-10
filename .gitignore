@@ -25,6 +25,9 @@ ENV/
 *.env
 !.env.example
 
+# Subscriber contact info (real email addresses) — never commit
+backend/data/
+
 # ---- Testing / coverage ----
 .pytest_cache/
 .coverage

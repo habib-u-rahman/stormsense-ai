@@ -4,6 +4,7 @@ langchain-community
 langchain-groq
 fastapi
 uvicorn
+websockets
 python-dotenv
 requests
 pydantic

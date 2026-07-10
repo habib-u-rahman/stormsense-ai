@@ -19,7 +19,9 @@ The system is powered by a graph of specialized agents:
 - **Data Agent** — fetches raw disaster data from external APIs
 - **Analysis Agent** — interprets data to assess risk and severity
 - **Alert Agent** — decides when and how to trigger alerts
+- **Forecast Agent** — compares current risk against recent history to describe whether it's rising, easing, or stable
 - **Writer Agent** — generates human-readable summaries and reports
+- **Notifier Agent** — sends a real email when the autonomous monitor (not chat) detects a High/Critical alert
 
 ## Project Structure
 
@@ -99,4 +101,4 @@ Open `http://localhost:3000`. The dashboard talks to the backend through a Next.
 
 ## Status
 
-Backend pipeline and frontend dashboard are both live and connected end-to-end: the map, risk score cards, real-time alerts, and chat all run on real data from the 5-agent pipeline. 🚧 Hackathon project — under active development.
+Backend pipeline and frontend dashboard are both live and connected end-to-end: the map, risk score cards, real-time alerts, and chat all run on real data from the 7-agent pipeline. 🚧 Hackathon project — under active development.

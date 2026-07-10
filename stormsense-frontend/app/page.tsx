@@ -13,10 +13,13 @@ import {
   Activity,
   Flame,
   Waves,
-  Info
+  Info,
+  LineChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { analyze, DisasterEvent } from './lib/api';
+import { analyze, getHistory, AnalyzeResponse, DisasterEvent, HistoryEntry } from './lib/api';
+import RiskTrendChart from './components/RiskTrendChart';
+import SubscribeForm from './components/SubscribeForm';
 
 // Leaflet needs `window`, so the map must never render on the server.
 const DisasterMap = dynamic(() => import('./components/DisasterMap'), { ssr: false });
@@ -52,7 +55,7 @@ interface ChatMessage {
   timestamp: string;
 }
 
-const DASHBOARD_REFRESH_MS = 90000;
+const WS_RECONNECT_DELAY_MS = 5000;
 
 export default function StormSenseDashboard() {
   const [events, setEvents] = useState<DisasterEvent[]>([]);
@@ -63,6 +66,17 @@ export default function StormSenseDashboard() {
   const [wildfireRisk, setWildfireRisk] = useState('Low');
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
+  // Whether the autonomous monitor's WebSocket is currently connected —
+  // drives the LIVE indicator so it reflects reality, not just decoration.
+  const [isLive, setIsLive] = useState(false);
+  // When the last real push actually arrived, so "Updated Xs ago" is a real
+  // measurement instead of always saying the same static thing.
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // Ticks every few seconds purely to force a re-render, so the relative
+  // "Xs/Xm ago" text visibly counts up between pushes instead of freezing.
+  const [, forceTick] = useState(0);
+  const [riskTrend, setRiskTrend] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
@@ -76,18 +90,17 @@ export default function StormSenseDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null);
 
-  // Runs the real 5-agent pipeline via the backend and applies the result to
-  // every piece of dashboard state (map, risk cards, alerts). Used both for
-  // the periodic global refresh and for user chat queries, so asking about a
-  // specific place also updates the live map/risk view.
-  const runAnalysis = useCallback(async (query: string, location: string = '') => {
-    const result = await analyze(query, location);
-
+  // Applies a pipeline result to every piece of dashboard state (map, risk
+  // cards, alerts). Shared by the autonomous monitor's WebSocket push and by
+  // on-demand chat queries, so asking about a specific place also updates
+  // the live map/risk view.
+  const applySnapshot = useCallback((result: AnalyzeResponse, location: string = '') => {
     setEvents(result.events);
     setOverallRisk((result.overall_risk as typeof overallRisk) || 'Low');
     setEarthquakeRisk(result.earthquake_risk || 'Low');
     setFloodRisk(result.flood_risk || 'Low');
     setWildfireRisk(result.wildfire_risk || 'Low');
+    setRiskTrend(result.risk_trend ?? null);
 
     if (result.alert_triggered && result.alert_message) {
       const hazards = [
@@ -109,27 +122,85 @@ export default function StormSenseDashboard() {
         return [newAlert, ...prev].slice(0, 5);
       });
     }
-
-    return result;
   }, []);
 
+  // Runs the real 7-agent pipeline via the backend for a specific, on-demand
+  // question (used by the chat), applying the result the same way the
+  // autonomous monitor's push updates do.
+  const runAnalysis = useCallback(async (query: string, location: string = '') => {
+    const result = await analyze(query, location);
+    applySnapshot(result, location);
+    return result;
+  }, [applySnapshot]);
+
+  // Connects to the backend's autonomous monitor over WebSocket. The backend
+  // re-checks global risk on its own schedule (independent of anyone asking)
+  // and pushes updates here, so the dashboard stays live without polling.
+  // Reconnects automatically if the connection drops (e.g. backend restart).
   useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        await runAnalysis('Global disaster risk overview');
-        setDashboardError(null);
-      } catch (err) {
-        console.error('Dashboard refresh failed:', err);
-        setDashboardError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setIsDashboardLoading(false);
-      }
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const connect = () => {
+      if (cancelled) return;
+
+      socket = new WebSocket(`ws://${window.location.hostname}:8000/ws/live`);
+
+      socket.onopen = () => {
+        setIsLive(true);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data: AnalyzeResponse = JSON.parse(event.data);
+          applySnapshot(data);
+          setIsDashboardLoading(false);
+          setDashboardError(null);
+          setLastUpdatedAt(new Date());
+
+          // A new push means the backend just recorded a new history point —
+          // refresh the trend chart to include it.
+          getHistory().then(setHistory).catch((err) => {
+            console.error('Failed to load risk history:', err);
+          });
+        } catch (err) {
+          console.error('Failed to parse live update:', err);
+        }
+      };
+
+      socket.onclose = () => {
+        setIsLive(false);
+        if (!cancelled) {
+          reconnectTimer = setTimeout(connect, WS_RECONNECT_DELAY_MS);
+        }
+      };
     };
 
-    loadDashboard();
-    const interval = setInterval(loadDashboard, DASHBOARD_REFRESH_MS);
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [applySnapshot]);
+
+  // Re-render every few seconds so the "Updated Xs/Xm ago" text actually
+  // counts up in real time instead of being frozen text.
+  useEffect(() => {
+    const interval = setInterval(() => forceTick(t => t + 1), 5000);
     return () => clearInterval(interval);
-  }, [runAnalysis]);
+  }, []);
+
+  const getUpdatedAgoText = () => {
+    if (!lastUpdatedAt) return 'Waiting for first update…';
+    const seconds = Math.max(0, Math.floor((Date.now() - lastUpdatedAt.getTime()) / 1000));
+    if (seconds < 10) return 'Updated just now';
+    if (seconds < 60) return `Updated ${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    return `Updated ${minutes} min ago`;
+  };
 
   const sendMessage = async () => {
     if (!chatInput.trim() || isProcessing) return;
@@ -193,14 +264,16 @@ export default function StormSenseDashboard() {
               </div>
             </div>
             <div className="ml-6 px-3 py-1 rounded-full bg-[#1a2332] text-xs flex items-center gap-2 border border-[#2a3749]">
-              <div className="w-2 h-2 rounded-full bg-[#22c55e] status-dot" />
-              <span className="text-[#94a3b8]">LIVE • {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+              <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-[#22c55e] status-dot' : 'bg-[#64748b]'}`} />
+              <span className="text-[#94a3b8]">
+                {isLive ? 'LIVE' : 'CONNECTING…'} • {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749]">
               <Users className="w-4 h-4 text-[#94a3b8]" />
-              <span className="text-[#94a3b8]">5 AI Agents Active</span>
+              <span className="text-[#94a3b8]">7 AI Agents Active</span>
             </div>
             <div className="px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749] text-xs">
               AMD GPU Cloud • Groq AI
@@ -221,7 +294,7 @@ export default function StormSenseDashboard() {
               GLOBAL RISK: {overallRisk.toUpperCase()}
             </div>
             <div className="text-xs text-[#94a3b8] px-3">
-              {isDashboardLoading ? 'Loading live data…' : `${events.length} active events • Updated seconds ago`}
+              {isDashboardLoading ? 'Loading live data…' : `${events.length} active events • ${getUpdatedAgoText()}`}
             </div>
           </div>
         </div>
@@ -247,7 +320,7 @@ export default function StormSenseDashboard() {
                   </div>
                 </div>
                 <div className="text-xs px-3 py-1 rounded-full bg-[#1a2332] border border-[#2a3749]">
-                  Leaflet.js • Auto-refresh
+                  Leaflet.js • {isLive ? 'Live push' : 'Reconnecting…'}
                 </div>
               </div>
 
@@ -304,7 +377,7 @@ export default function StormSenseDashboard() {
               </div>
             </div>
 
-            <div className="glass rounded-3xl p-5 flex flex-col h-[320px]">
+            <div className="glass rounded-3xl p-5 flex flex-col h-[400px]">
               <div className="flex items-center justify-between mb-4 px-1">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-[#ef4444]" />
@@ -329,6 +402,25 @@ export default function StormSenseDashboard() {
                   ))}
                 </AnimatePresence>
               </div>
+              <SubscribeForm />
+            </div>
+          </div>
+
+          {/* RISK TREND */}
+          <div className="lg:col-span-12">
+            <div className="glass rounded-3xl p-5">
+              <div className="flex items-center justify-between mb-4 px-1">
+                <div className="flex items-center gap-2">
+                  <LineChart className="w-5 h-5 text-[#3b82f6]" />
+                  <div>
+                    <div className="font-semibold">Overall Risk Trend</div>
+                    <div className="text-xs text-[#94a3b8]">
+                      {riskTrend || "Tracking risk over time from the autonomous monitor"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <RiskTrendChart history={history} />
             </div>
           </div>
 
@@ -388,7 +480,7 @@ export default function StormSenseDashboard() {
                 <MessageCircle className="w-5 h-5 text-[#3b82f6]" />
                 <div>
                   <div className="font-semibold">Ask StormSense</div>
-                  <div className="text-[10px] text-[#94a3b8]">Full 5-agent pipeline</div>
+                  <div className="text-[10px] text-[#94a3b8]">Full 7-agent pipeline</div>
                 </div>
               </div>
 
@@ -442,7 +534,7 @@ export default function StormSenseDashboard() {
         </div>
 
         <div className="mt-8 text-center text-xs text-[#64748b] tracking-[3px] font-mono">
-          STORMSENSE AI • 5 SPECIALIZED AGENTS • FULLY AUTONOMOUS • AMD HACKATHON 2026
+          STORMSENSE AI • 7 SPECIALIZED AGENTS • FULLY AUTONOMOUS • AMD HACKATHON 2026
         </div>
       </div>
     </div>
