@@ -17,7 +17,7 @@ import {
   LineChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { analyze, getHistory, AnalyzeResponse, DisasterEvent, HistoryEntry } from './lib/api';
+import { analyze, getHistory, getWebSocketUrl, AnalyzeResponse, DisasterEvent, HistoryEntry } from './lib/api';
 import RiskTrendChart from './components/RiskTrendChart';
 import SubscribeForm from './components/SubscribeForm';
 
@@ -145,7 +145,7 @@ export default function StormSenseDashboard() {
     const connect = () => {
       if (cancelled) return;
 
-      socket = new WebSocket(`ws://${window.location.hostname}:8000/ws/live`);
+      socket = new WebSocket(getWebSocketUrl());
 
       socket.onopen = () => {
         setIsLive(true);

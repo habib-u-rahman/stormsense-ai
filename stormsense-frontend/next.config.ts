@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 
+// Falls back to 127.0.0.1 (not "localhost" — Node can resolve "localhost" to
+// IPv6 first, which fails/resets since uvicorn only binds IPv4) for local
+// dev. Set NEXT_PUBLIC_API_URL in .env.local / your deployment platform
+// to point at a deployed backend instead.
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
 const nextConfig: NextConfig = {
   // react-leaflet's Leaflet instance doesn't tear down fast enough across
   // React Strict Mode's intentional dev-only double-mount, which crashes
@@ -8,11 +14,8 @@ const nextConfig: NextConfig = {
   // production behavior.
   reactStrictMode: false,
   async rewrites() {
-    // Use 127.0.0.1 explicitly, not "localhost" — Node can resolve "localhost"
-    // to IPv6 (::1) first, which fails/resets since uvicorn only binds IPv4,
-    // causing intermittent "socket hang up" errors on this proxy route.
     return [
-      { source: "/api/backend/:path*", destination: "http://127.0.0.1:8000/:path*" },
+      { source: "/api/backend/:path*", destination: `${BACKEND_URL}/:path*` },
     ];
   },
 };

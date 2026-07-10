@@ -1,5 +1,7 @@
-// Client for the StormSense AI FastAPI backend, routed through the
-// Next.js rewrite in next.config.ts (/api/backend/* -> http://localhost:8000/*).
+// Client for the StormSense AI FastAPI backend. REST calls are routed
+// through the Next.js rewrite in next.config.ts (/api/backend/* -> backend);
+// the WebSocket connects directly. Both point at NEXT_PUBLIC_API_URL
+// (see .env.example), defaulting to localhost:8000 for local dev.
 
 export interface DisasterEvent {
   id: string;
@@ -82,4 +84,17 @@ export async function subscribe(value: string): Promise<string> {
     throw new Error(body?.detail || `Subscription failed (status ${response.status})`);
   }
   return body.message as string;
+}
+
+// The autonomous monitor's live push feed connects directly to the backend
+// (not through the Next.js proxy, since WebSocket upgrades aren't reliably
+// proxied in all deployment setups). NEXT_PUBLIC_API_URL lets this point
+// at a deployed backend; falls back to the current host on port 8000 for
+// local dev, matching the same convention as next.config.ts's rewrite.
+export function getWebSocketUrl(): string {
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (backendUrl) {
+    return backendUrl.replace(/^http/, "ws") + "/ws/live";
+  }
+  return `ws://${window.location.hostname}:8000/ws/live`;
 }
