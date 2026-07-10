@@ -1,5 +1,5 @@
 // Client for the StormSense AI FastAPI backend. REST calls are routed
-// through the Next.js rewrite in next.config.ts (/api/backend/* -> backend);
+// through the Next.js rewrite in next.config.ts (/api/* -> backend/api/*);
 // the WebSocket connects directly. Both point at NEXT_PUBLIC_API_URL
 // (see .env.example), defaulting to localhost:8000 for local dev.
 
@@ -38,7 +38,7 @@ export interface HistoryEntry {
 }
 
 export async function analyze(query: string, location: string = ""): Promise<AnalyzeResponse> {
-  const response = await fetch("/api/backend/api/analyze", {
+  const response = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, location }),
@@ -65,7 +65,7 @@ export async function analyze(query: string, location: string = ""): Promise<Ana
 }
 
 export async function getHistory(): Promise<HistoryEntry[]> {
-  const response = await fetch("/api/backend/api/history");
+  const response = await fetch("/api/history");
   if (!response.ok) {
     throw new Error(`Failed to load risk history (status ${response.status})`);
   }
@@ -73,7 +73,7 @@ export async function getHistory(): Promise<HistoryEntry[]> {
 }
 
 export async function subscribe(value: string): Promise<string> {
-  const response = await fetch("/api/backend/api/subscribe", {
+  const response = await fetch("/api/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ value }),

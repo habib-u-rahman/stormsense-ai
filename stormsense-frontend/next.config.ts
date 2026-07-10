@@ -7,6 +7,9 @@ import type { NextConfig } from "next";
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
+  // Standalone output produces a minimal, self-contained server bundle —
+  // needed for containerized deployment platforms (Docker, Render, etc.).
+  output: "standalone",
   // react-leaflet's Leaflet instance doesn't tear down fast enough across
   // React Strict Mode's intentional dev-only double-mount, which crashes
   // the map with "Map container is being reused by another instance".
@@ -15,7 +18,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   async rewrites() {
     return [
-      { source: "/api/backend/:path*", destination: `${BACKEND_URL}/:path*` },
+      { source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` },
     ];
   },
 };
