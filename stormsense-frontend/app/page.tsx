@@ -250,50 +250,52 @@ export default function StormSenseDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0f1a] text-[#e2e8f0] overflow-hidden">
+    <div className="min-h-screen bg-[#0a0f1a] text-[#e2e8f0] overflow-x-hidden">
       <nav className="border-b border-white/10 bg-[#0a0f1a]/90 backdrop-blur-2xl sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-[#3b82f6] to-[#1e40af] flex items-center justify-center shadow-lg shadow-blue-500/30">
-                <Shield className="w-5 h-5 text-white" />
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-gradient-to-br from-[#3b82f6] to-[#1e40af] flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0">
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <div>
-                <div className="font-semibold tracking-[-1.5px] text-2xl">StormSense</div>
-                <div className="text-[10px] text-[#64748b] -mt-1.5 tracking-[2px]">AI • 2090 DISASTER INTELLIGENCE</div>
+              <div className="min-w-0">
+                <div className="font-semibold tracking-[-1.5px] text-lg sm:text-2xl truncate">StormSense</div>
+                <div className="hidden xs:block text-[10px] text-[#64748b] -mt-1.5 tracking-[2px] truncate">AI • 2090 DISASTER INTELLIGENCE</div>
               </div>
             </div>
-            <div className="ml-6 px-3 py-1 rounded-full bg-[#1a2332] text-xs flex items-center gap-2 border border-[#2a3749]">
+            <div className="hidden sm:flex ml-2 sm:ml-6 px-3 py-1 rounded-full bg-[#1a2332] text-xs items-center gap-2 border border-[#2a3749] shrink-0">
               <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-[#22c55e] status-dot' : 'bg-[#64748b]'}`} />
-              <span className="text-[#94a3b8]">
+              <span className="text-[#94a3b8] whitespace-nowrap">
                 {isLive ? 'LIVE' : 'CONNECTING…'} • {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </span>
             </div>
+            {/* On mobile the LIVE dot alone still shows connection status */}
+            <div className={`sm:hidden w-2 h-2 rounded-full shrink-0 ${isLive ? 'bg-[#22c55e] status-dot' : 'bg-[#64748b]'}`} />
           </div>
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749]">
+          <div className="flex items-center gap-2 sm:gap-4 text-sm shrink-0">
+            <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749]">
               <Users className="w-4 h-4 text-[#94a3b8]" />
-              <span className="text-[#94a3b8]">7 AI Agents Active</span>
+              <span className="text-[#94a3b8] whitespace-nowrap">7 AI Agents Active</span>
             </div>
-            <div className="px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749] text-xs">
+            <div className="hidden lg:block px-4 py-1.5 rounded-xl bg-[#1a2332] border border-[#2a3749] text-xs whitespace-nowrap">
               AMD GPU Cloud • Groq AI
             </div>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-[1600px] mx-auto px-6 pt-6 pb-8">
-        <div className="flex items-end justify-between mb-6">
-          <div>
-            <div className="text-4xl font-semibold tracking-tighter">Global Monitoring Dashboard</div>
-            <div className="text-[#94a3b8] mt-1">Autonomous 24/7 surveillance • USGS + NASA FIRMS + OpenWeatherMap</div>
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 pt-6 pb-8">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
+          <div className="min-w-0">
+            <div className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tighter">Global Monitoring Dashboard</div>
+            <div className="text-[#94a3b8] mt-1 text-sm sm:text-base">Autonomous 24/7 surveillance • USGS + NASA FIRMS + OpenWeatherMap</div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className={`px-5 py-2 rounded-2xl text-sm font-medium flex items-center gap-2 border ${getRiskColor(overallRisk)}`}>
-              <TrendingUp className="w-4 h-4" />
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className={`px-4 sm:px-5 py-2 rounded-2xl text-xs sm:text-sm font-medium flex items-center gap-2 border ${getRiskColor(overallRisk)}`}>
+              <TrendingUp className="w-4 h-4 shrink-0" />
               GLOBAL RISK: {overallRisk.toUpperCase()}
             </div>
-            <div className="text-xs text-[#94a3b8] px-3">
+            <div className="text-xs text-[#94a3b8] sm:px-3">
               {isDashboardLoading ? 'Loading live data…' : `${events.length} active events • ${getUpdatedAgoText()}`}
             </div>
           </div>
@@ -349,7 +351,7 @@ export default function StormSenseDashboard() {
                 <Shield className="w-5 h-5 text-[#3b82f6]" />
                 <div className="font-semibold">Risk Score Dashboard</div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {[
                   { label: 'Earthquake', risk: earthquakeRisk, type: 'earthquake', Icon: Activity },
                   { label: 'Wildfire', risk: wildfireRisk, type: 'wildfire', Icon: Flame },
@@ -357,12 +359,12 @@ export default function StormSenseDashboard() {
                 ].map((cat) => {
                   const count = events.filter(e => e.type === cat.type).length;
                   return (
-                    <div key={cat.label} className="card rounded-2xl p-4">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <cat.Icon className="w-3.5 h-3.5 text-[#94a3b8]" />
-                        <div className="text-xs text-[#94a3b8]">{cat.label.toUpperCase()}</div>
+                    <div key={cat.label} className="card rounded-2xl p-2.5 sm:p-4 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-2 min-w-0">
+                        <cat.Icon className="w-3.5 h-3.5 text-[#94a3b8] shrink-0" />
+                        <div className="text-[10px] sm:text-xs text-[#94a3b8] leading-tight min-w-0">{cat.label.toUpperCase()}</div>
                       </div>
-                      <div className={`inline-block px-3 py-1 rounded-xl text-sm font-semibold ${getRiskColor(cat.risk)}`}>
+                      <div className={`inline-block px-2 sm:px-3 py-1 rounded-xl text-xs sm:text-sm font-semibold ${getRiskColor(cat.risk)}`}>
                         {cat.risk}
                       </div>
                       <div className="text-[10px] text-[#64748b] mt-2 leading-snug">
