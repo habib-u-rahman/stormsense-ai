@@ -1,13 +1,16 @@
 # API routes: defines FastAPI endpoints for triggering the disaster intelligence workflow
 
+import asyncio
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from agents.analysis_agent import classify_earthquake_magnitude
+from api.websocket import broadcast
 from graph.workflow import run_pipeline
 from services.history import get_history
+from services.simulator import SCENARIOS
 from services.subscribers import add_subscriber, get_subscriber_count
 from tools.firms_tool import parse_wildfire_data
 from tools.usgs_tool import parse_earthquake_data
@@ -56,6 +59,7 @@ class AnalyzeResponse(BaseModel):
     final_response: str
     risk_trend: Optional[str] = None
     notification_sent: bool = False
+    simulated: bool = False
     events: List[DisasterEvent]
 
 
@@ -74,6 +78,15 @@ class HistoryEntryResponse(BaseModel):
     earthquake_risk: str
     flood_risk: str
     wildfire_risk: str
+
+
+class SimulateRequest(BaseModel):
+    """Request body for POST /api/simulate. Runs the real pipeline on a
+    synthetic High/Critical scenario so the alert flow can be demoed without
+    waiting for a real disaster."""
+
+    scenario: str  # "earthquake" | "wildfire" | "flood"
+    send_email: bool = False
 
 
 class SubscribeRequest(BaseModel):
@@ -214,15 +227,21 @@ def build_dashboard_events(result: dict) -> List[DisasterEvent]:
     return events
 
 
-def run_analysis_and_shape(query: str, location: str = "", autonomous: bool = False) -> AnalyzeResponse:
+def run_analysis_and_shape(
+    query: str,
+    location: str = "",
+    autonomous: bool = False,
+    simulated_data: dict | None = None,
+) -> AnalyzeResponse:
     """Run the full pipeline and shape the result into an AnalyzeResponse.
 
-    Shared by the POST /api/analyze endpoint and the autonomous background
-    monitor (services/scheduler.py), so both produce identically-shaped data.
-    `autonomous` defaults to False here so chat/manual requests never trigger
-    the Notifier Agent's real email — only the scheduler passes True.
+    Shared by the POST /api/analyze endpoint, the autonomous background
+    monitor (services/scheduler.py), and the demo simulator (/api/simulate),
+    so all three produce identically-shaped data. `autonomous` defaults to
+    False here so chat/manual requests never trigger the Notifier Agent's
+    real email — only the scheduler (and an opted-in simulation) pass True.
     """
-    result = run_pipeline(query=query, location=location, autonomous=autonomous)
+    result = run_pipeline(query=query, location=location, autonomous=autonomous, simulated_data=simulated_data)
 
     return AnalyzeResponse(
         overall_risk=result.get("overall_risk") or "",
@@ -235,6 +254,7 @@ def run_analysis_and_shape(query: str, location: str = "", autonomous: bool = Fa
         final_response=result.get("final_response") or "",
         risk_trend=result.get("risk_trend"),
         notification_sent=result.get("notification_sent") or False,
+        simulated=result.get("simulated_data") is not None,
         events=build_dashboard_events(result),
     )
 
@@ -259,6 +279,38 @@ def trigger_check():
         return run_analysis_and_shape("Global disaster risk overview", "", autonomous=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
+
+
+@router.post("/api/simulate", response_model=AnalyzeResponse)
+async def simulate(request: SimulateRequest):
+    """Run the real 7-agent pipeline on a synthetic High/Critical scenario,
+    for demoing the alert/notification flow without waiting for a real
+    disaster. `send_email` opts into a real test email via the Notifier
+    Agent; it defaults to off so repeated demo clicks don't spam subscribers.
+    Broadcasts live to connected dashboards but is NOT written into the
+    permanent risk history, so it can't distort the real trend chart."""
+    scenario_builder = SCENARIOS.get(request.scenario)
+    if scenario_builder is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown scenario '{request.scenario}'. Choose one of: {', '.join(SCENARIOS)}",
+        )
+
+    location, simulated_data = scenario_builder()
+
+    try:
+        response = await asyncio.to_thread(
+            run_analysis_and_shape,
+            f"Simulated {request.scenario} scenario for demo purposes",
+            location,
+            request.send_email,
+            simulated_data,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
+
+    await broadcast(response.model_dump())
+    return response
 
 
 @router.get("/api/health", response_model=HealthResponse)

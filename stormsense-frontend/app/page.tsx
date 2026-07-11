@@ -14,10 +14,11 @@ import {
   Flame,
   Waves,
   Info,
-  LineChart
+  LineChart,
+  PlayCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { analyze, getHistory, getWebSocketUrl, AnalyzeResponse, DisasterEvent, HistoryEntry } from './lib/api';
+import { analyze, simulate, getHistory, getWebSocketUrl, AnalyzeResponse, DisasterEvent, HistoryEntry } from './lib/api';
 import RiskTrendChart from './components/RiskTrendChart';
 import SubscribeForm from './components/SubscribeForm';
 
@@ -89,6 +90,11 @@ export default function StormSenseDashboard() {
   const [chatLocation, setChatLocation] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<DisasterEvent | null>(null);
+  // Demo scenario simulator — lets a High/Critical alert be shown live
+  // without waiting for a real disaster somewhere in the world.
+  const [simulatingScenario, setSimulatingScenario] = useState<string | null>(null);
+  const [sendTestEmail, setSendTestEmail] = useState(false);
+  const [isSimulatedActive, setIsSimulatedActive] = useState(false);
 
   // Applies a pipeline result to every piece of dashboard state (map, risk
   // cards, alerts). Shared by the autonomous monitor's WebSocket push and by
@@ -101,6 +107,7 @@ export default function StormSenseDashboard() {
     setFloodRisk(result.flood_risk || 'Low');
     setWildfireRisk(result.wildfire_risk || 'Low');
     setRiskTrend(result.risk_trend ?? null);
+    setIsSimulatedActive(!!result.simulated);
 
     if (result.alert_triggered && result.alert_message) {
       const hazards = [
@@ -132,6 +139,29 @@ export default function StormSenseDashboard() {
     applySnapshot(result, location);
     return result;
   }, [applySnapshot]);
+
+  // Runs the real 7-agent pipeline on a synthetic High/Critical scenario, so
+  // the alert/notification flow can be demoed without waiting for a real
+  // disaster to occur somewhere in the world during judging.
+  const handleSimulate = useCallback(async (scenario: string) => {
+    if (simulatingScenario) return;
+    setSimulatingScenario(scenario);
+    try {
+      const result = await simulate(scenario, sendTestEmail);
+      applySnapshot(result, '');
+      const aiMessage: ChatMessage = {
+        id: Date.now(),
+        role: 'ai',
+        content: `[Simulated ${scenario} scenario for demo purposes]\n\n${result.final_response || result.final_explanation}`,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, aiMessage]);
+    } catch (err) {
+      console.error('Simulation failed:', err);
+    } finally {
+      setSimulatingScenario(null);
+    }
+  }, [simulatingScenario, sendTestEmail, applySnapshot]);
 
   // Connects to the backend's autonomous monitor over WebSocket. The backend
   // re-checks global risk on its own schedule (independent of anyone asking)
@@ -291,6 +321,12 @@ export default function StormSenseDashboard() {
             <div className="text-[#94a3b8] mt-1 text-sm sm:text-base">Autonomous 24/7 surveillance • USGS + NASA FIRMS + OpenWeatherMap</div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {isSimulatedActive && (
+              <div className="px-3 py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-[#3b82f6]/15 text-[#93c5fd] border border-[#3b82f6]/40 flex items-center gap-1.5">
+                <PlayCircle className="w-3.5 h-3.5 shrink-0" />
+                SIMULATED DEMO — NOT A REAL EVENT
+              </div>
+            )}
             <div className={`px-4 sm:px-5 py-2 rounded-2xl text-xs sm:text-sm font-medium flex items-center gap-2 border ${getRiskColor(overallRisk)}`}>
               <TrendingUp className="w-4 h-4 shrink-0" />
               GLOBAL RISK: {overallRisk.toUpperCase()}
@@ -377,6 +413,42 @@ export default function StormSenseDashboard() {
                   );
                 })}
               </div>
+            </div>
+
+            <div className="glass rounded-3xl p-5">
+              <div className="flex items-center gap-2 mb-1 px-1">
+                <PlayCircle className="w-5 h-5 text-[#3b82f6]" />
+                <div className="font-semibold">Simulate Critical Event</div>
+              </div>
+              <div className="text-xs text-[#94a3b8] mb-4 px-1">
+                Runs the real 7-agent pipeline on a synthetic High/Critical scenario — great for demoing alerts live.
+              </div>
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3">
+                {[
+                  { scenario: 'earthquake', label: 'Earthquake', Icon: Activity },
+                  { scenario: 'wildfire', label: 'Wildfire', Icon: Flame },
+                  { scenario: 'flood', label: 'Flood', Icon: Waves },
+                ].map(({ scenario, label, Icon }) => (
+                  <button
+                    key={scenario}
+                    onClick={() => handleSimulate(scenario)}
+                    disabled={!!simulatingScenario}
+                    className="card rounded-2xl p-3 flex flex-col items-center gap-1.5 text-xs font-medium hover:border-[#3b82f6]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    <Icon className="w-4 h-4 text-[#3b82f6]" />
+                    {simulatingScenario === scenario ? 'Running…' : label}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 px-1 text-xs text-[#94a3b8] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendTestEmail}
+                  onChange={(e) => setSendTestEmail(e.target.checked)}
+                  className="accent-[#3b82f6]"
+                />
+                Send a real test alert email to subscribers
+              </label>
             </div>
 
             <div className="glass rounded-3xl p-5 flex flex-col h-[400px]">

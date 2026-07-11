@@ -41,13 +41,22 @@ graph.set_entry_point("manager")
 workflow = graph.compile()
 
 
-def run_pipeline(query: str, location: str = "", autonomous: bool = False) -> StormSenseState:
+def run_pipeline(
+    query: str,
+    location: str = "",
+    autonomous: bool = False,
+    simulated_data: dict | None = None,
+) -> StormSenseState:
     """Run the full StormSense AI pipeline for a given query/location and return the final state.
 
     `autonomous` must only be True for scheduled background runs (the
     autonomous monitor) — it's what allows the Notifier Agent to send a real
     email. User-initiated chat queries must never set this, or asking a
     question could trigger a real-world notification.
+
+    `simulated_data`, when provided, makes the Data Agent use pre-built raw
+    data instead of calling the live APIs (see services/simulator.py) — every
+    other agent still runs for real on top of it.
     """
     # Seed the shared state with the initial query and location; every other field
     # gets filled in as the state flows through the manager, data, analysis, alert, writer, and notifier agents
@@ -55,6 +64,7 @@ def run_pipeline(query: str, location: str = "", autonomous: bool = False) -> St
         "query": query,
         "location": location,
         "autonomous": autonomous,
+        "simulated_data": simulated_data,
     }
 
     final_state = workflow.invoke(initial_state)

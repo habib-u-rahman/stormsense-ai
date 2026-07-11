@@ -101,6 +101,14 @@ def _get_with_deadline(future, source_name: str, deadline_seconds: float) -> dic
 
 def data_agent(state: StormSenseState) -> StormSenseState:
     """Fetch live earthquake, weather, and wildfire data and store it in the shared state."""
+    simulated = state.get("simulated_data")
+    if simulated:
+        print("[Data Agent] Using simulated scenario data — skipping live API calls.")
+        state["raw_earthquake_data"] = simulated.get("raw_earthquake_data") or {}
+        state["raw_weather_data"] = simulated.get("raw_weather_data") or {}
+        state["raw_wildfire_data"] = simulated.get("raw_wildfire_data") or {}
+        return state
+
     print("[Data Agent] Starting data collection...")
 
     location = state.get("location") or DEFAULT_WEATHER_LOCATION
