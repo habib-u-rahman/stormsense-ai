@@ -26,7 +26,6 @@ export interface AnalyzeResponse {
   final_explanation: string;
   final_response: string;
   risk_trend?: string | null;
-  simulated?: boolean;
   events: DisasterEvent[];
 }
 
@@ -63,20 +62,6 @@ export async function analyze(query: string, location: string = ""): Promise<Ana
   }
 
   return response.json();
-}
-
-export async function simulate(scenario: string, sendEmail: boolean = false): Promise<AnalyzeResponse> {
-  const response = await fetch("/api/simulate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, send_email: sendEmail }),
-  });
-
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(body?.detail || `Simulation failed (status ${response.status})`);
-  }
-  return body as AnalyzeResponse;
 }
 
 export async function getHistory(): Promise<HistoryEntry[]> {

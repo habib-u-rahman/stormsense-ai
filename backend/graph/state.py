@@ -62,9 +62,3 @@ class StormSenseState(TypedDict):
     # produced by the Forecast Agent from recent history. None if there
     # isn't enough history yet to compare against.
     risk_trend: Optional[str]
-
-    # When set, the Data Agent uses this pre-built raw data instead of
-    # calling the live APIs — powers the "Simulate Critical Event" demo
-    # feature so a High/Critical alert can be shown without waiting for a
-    # real disaster. Every agent after Data runs for real on this data.
-    simulated_data: Optional[dict[str, Any]]
