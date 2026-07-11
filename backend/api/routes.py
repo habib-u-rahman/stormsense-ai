@@ -1,12 +1,15 @@
 # API routes: defines FastAPI endpoints for triggering the disaster intelligence workflow
 
+import asyncio
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from agents.analysis_agent import classify_earthquake_magnitude
+from agents.data_agent import fetch_earthquake_data, fetch_wildfire_data
 from graph.workflow import run_pipeline
+from services.compare import assess_location
 from services.history import get_history
 from services.subscribers import add_subscriber, get_subscriber_count
 from tools.firms_tool import parse_wildfire_data
@@ -74,6 +77,32 @@ class HistoryEntryResponse(BaseModel):
     earthquake_risk: str
     flood_risk: str
     wildfire_risk: str
+
+
+class CompareRequest(BaseModel):
+    """Request body for POST /api/compare. 2-4 locations to assess side by side."""
+
+    locations: List[str]
+
+
+class CompareLocationResult(BaseModel):
+    """One location's risk assessment within a comparison. `error` is set
+    instead of the risk fields if that location's own lookup failed, so one
+    bad location name can't fail the whole comparison."""
+
+    location: str
+    overall_risk: str = ""
+    earthquake_risk: str = ""
+    flood_risk: str = ""
+    wildfire_risk: str = ""
+    alert_triggered: bool = False
+    error: Optional[str] = None
+
+
+class CompareResponse(BaseModel):
+    """Response body returned by POST /api/compare."""
+
+    results: List[CompareLocationResult]
 
 
 class SubscribeRequest(BaseModel):
@@ -259,6 +288,47 @@ def trigger_check():
         return run_analysis_and_shape("Global disaster risk overview", "", autonomous=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
+
+
+MIN_COMPARE_LOCATIONS = 2
+MAX_COMPARE_LOCATIONS = 4
+
+
+@router.post("/api/compare", response_model=CompareResponse)
+async def compare(request: CompareRequest):
+    """Assess risk for 2-4 locations side by side, independent of and without
+    touching the live global dashboard — no broadcast, no history write, no
+    real email. Each location's real-time weather is fetched fresh; the
+    global USGS/FIRMS feeds are fetched once and reused across all of them,
+    then geo-filtered per location (see services/compare.py)."""
+    locations: List[str] = []
+    seen = set()
+    for raw in request.locations:
+        loc = raw.strip()
+        if not loc or loc.lower() in seen:
+            continue
+        seen.add(loc.lower())
+        locations.append(loc)
+
+    if len(locations) < MIN_COMPARE_LOCATIONS:
+        raise HTTPException(status_code=400, detail=f"Enter at least {MIN_COMPARE_LOCATIONS} different locations to compare.")
+    if len(locations) > MAX_COMPARE_LOCATIONS:
+        raise HTTPException(status_code=400, detail=f"Compare at most {MAX_COMPARE_LOCATIONS} locations at once.")
+
+    global_earthquakes, global_wildfires = await asyncio.gather(
+        asyncio.to_thread(fetch_earthquake_data),
+        asyncio.to_thread(fetch_wildfire_data),
+    )
+
+    async def _run(location: str) -> CompareLocationResult:
+        try:
+            result = await asyncio.to_thread(assess_location, location, global_earthquakes, global_wildfires)
+            return CompareLocationResult(**result)
+        except Exception as e:
+            return CompareLocationResult(location=location, error=str(e))
+
+    results = await asyncio.gather(*[_run(loc) for loc in locations])
+    return CompareResponse(results=list(results))
 
 
 @router.get("/api/health", response_model=HealthResponse)

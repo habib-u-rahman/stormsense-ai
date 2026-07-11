@@ -37,6 +37,16 @@ export interface HistoryEntry {
   wildfire_risk: string;
 }
 
+export interface CompareLocationResult {
+  location: string;
+  overall_risk: string;
+  earthquake_risk: string;
+  flood_risk: string;
+  wildfire_risk: string;
+  alert_triggered: boolean;
+  error?: string | null;
+}
+
 export async function analyze(query: string, location: string = ""): Promise<AnalyzeResponse> {
   const response = await fetch("/api/analyze", {
     method: "POST",
@@ -62,6 +72,20 @@ export async function analyze(query: string, location: string = ""): Promise<Ana
   }
 
   return response.json();
+}
+
+export async function compareLocations(locations: string[]): Promise<CompareLocationResult[]> {
+  const response = await fetch("/api/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ locations }),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.detail || `Comparison failed (status ${response.status})`);
+  }
+  return body.results as CompareLocationResult[];
 }
 
 export async function getHistory(): Promise<HistoryEntry[]> {

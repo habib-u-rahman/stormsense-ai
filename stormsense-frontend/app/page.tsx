@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { analyze, getHistory, getWebSocketUrl, AnalyzeResponse, DisasterEvent, HistoryEntry } from './lib/api';
 import RiskTrendChart from './components/RiskTrendChart';
 import SubscribeForm from './components/SubscribeForm';
+import CompareLocations from './components/CompareLocations';
 
 // Leaflet needs `window`, so the map must never render on the server.
 const DisasterMap = dynamic(() => import('./components/DisasterMap'), { ssr: false });
@@ -424,6 +425,11 @@ export default function StormSenseDashboard() {
               </div>
               <RiskTrendChart history={history} />
             </div>
+          </div>
+
+          {/* COMPARE LOCATIONS */}
+          <div className="lg:col-span-12">
+            <CompareLocations />
           </div>
 
           {/* AI ANALYSIS */}
