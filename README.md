@@ -136,4 +136,4 @@ Open `http://localhost:3000`. The dashboard talks to the backend through a Next.
 
 ## Status
 
-Backend and frontend are fully connected end-to-end and verified live: the map, risk score cards, real-time alerts, trend chart, chat, and email subscriptions all run on real data from the 7-agent pipeline, with the autonomous monitor running continuously in the background. 🚧 Hackathon project — built for the AMD Developer Hackathon.
+Backend and frontend are fully connected end-to-end and verified live: the map, risk score cards, real-time alerts, trend chart, chat, and email subscriptions all run on real data from the 7-agent pipeline, with the autonomous monitor running continuously in the background. 
